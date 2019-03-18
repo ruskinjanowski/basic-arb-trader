@@ -2,12 +2,12 @@ package com.trader.client;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.knowm.xchange.currency.Currency;
 import org.knowm.xchange.currency.CurrencyPair;
 import org.knowm.xchange.dto.Order.OrderType;
 
-import com.trader.logging.LimitsAndRates;
 import com.trader.logging.LoggingUtil;
 import com.trader.logging.Transaction;
 import com.trader.market.data.AccountData;
@@ -40,44 +40,52 @@ public class ZAR_USD_Converter implements IOrderFilled, ISpreadListener {
 	final LunoBTCManager luno;
 	private final MeanStandardDeviation limitGetter;
 
-	double availableUSD;
+	final double startingUSD;
+	final double startingBTCLuno;
+	double tradedBTC = 0;
+
+	// final double toTrade;
 
 	public ZAR_USD_Converter() {
 		EMarketType market = EMarketType.ZAR_BTC;
-		availableUSD = AccountData.getBalance(EMarketType.USD_BTC, Currency.USD, 1);
+		startingUSD = AccountData.getBalance(EMarketType.USD_BTC, Currency.USD, 1);
+		startingBTCLuno = AccountData.getBalance(market, Currency.BTC, 1);
 		wallet = new AccWallet(market);
 
-		limitGetter = new MeanStandardDeviation(Formula.USDBITSTAMP_ZARLUNO_BTC_PERCDIFF, 24 * 60, 1);
+		limitGetter = new MeanStandardDeviation(Formula.USDBITSTAMP_ZARLUNO_BTC_PERCDIFF, 24 * 60,
+				BasicArbTraderProperties.INSTANCE.sdMultiple);
 		luno = new LunoBTCManager(market, wallet);
 
 		luno.addOrderFilledListener(this);
 		MarketEvents.get(market).addSpreadListener(this, ReceivePriority.HIGH);
+
 	}
 
 	@Override
 	public synchronized void spreadChanged() {
 		try {
-			TradeLimits tradeLimits = getTradeLimits();
-			double zarusd = MarketData.INSTANCE.getZARrUSD(1).mid();
-			SpreadChanged spread = MarketEvents.getSpread(EMarketType.ZAR_BTC);
+
 			MarketPrice mp = MarketData.INSTANCE.getUSDrBTC(1);
 
-			double rateupper = spread.priceAsk / mp.ask;
-			double diffupper = (rateupper - zarusd) / zarusd * 100;
+			if (isConditionCorrect()) {
 
-			LimitsAndRates lr = new LimitsAndRates(tradeLimits.upper, tradeLimits.lower, diffupper, 0);
-			System.out.println(lr);
-
-			System.out.println("rates: " + lr);
-
-			double buyAmount = AccWallet.roundBTC(availableUSD / mp.ask);
-			if (diffupper > tradeLimits.upper) {
-				// sell BTC
-				System.out.println("Trading...");
-				if (buyAmount > wallet.getBtc()) {
-					luno.setWantedBTC(0);
+				final double tryy;
+				if (BasicArbTraderProperties.INSTANCE.useFixedBTCAmount) {
+					tryy = BasicArbTraderProperties.INSTANCE.fixedBTCAmount;
 				} else {
-					luno.setWantedBTC(wallet.getBtc() - availableUSD);
+					tryy = startingBTCLuno;
+				}
+				// MarketPrice mp = MarketData.INSTANCE.getUSDrBTC(1);
+				double canBuyBitstamp = startingUSD / mp.ask;
+				if (canBuyBitstamp > tryy) {
+					if (BasicArbTraderProperties.INSTANCE.useFixedBTCAmount) {
+						// System.out.println("set1");
+						luno.setWantedBTC(startingBTCLuno - BasicArbTraderProperties.INSTANCE.fixedBTCAmount);
+					} else {
+						luno.setWantedBTC(0);
+					}
+				} else {
+					luno.setWantedBTC(startingBTCLuno - canBuyBitstamp);
 				}
 			} else {
 				// don't trade
@@ -105,10 +113,11 @@ public class ZAR_USD_Converter implements IOrderFilled, ISpreadListener {
 					oBitstamp.getAveragePrice().doubleValue(), OrderType.BID, CurrencyPair.BTC_USD);
 			LoggingUtil.appendToFile(TRANSACTION_FILE, bitstampT.toString());
 
-			double dollarSpent = oBitstamp.getCumulativeAmount().doubleValue()
-					* oBitstamp.getAveragePrice().doubleValue();
-
-			availableUSD -= dollarSpent;
+			tradedBTC += t.getFill();
+			// double dollarSpent = oBitstamp.getCumulativeAmount().doubleValue()
+			// * oBitstamp.getAveragePrice().doubleValue();
+			//
+			// availableUSD -= dollarSpent;
 			if (Utility.isEqualVolume(wallet.getBtc(), 0)) {
 				System.out.println("volume complete: " + vol);
 				System.exit(0);
@@ -144,6 +153,49 @@ public class ZAR_USD_Converter implements IOrderFilled, ISpreadListener {
 		}
 
 		return tl;
+	}
+
+	/**
+	 * Check whether all conditions specified in the properties file are correct,
+	 * also logs details.
+	 * 
+	 * @return whether conditions specified in the properties file are true.
+	 */
+	private boolean isConditionCorrect() {
+
+		double zarusd = MarketData.INSTANCE.getZARrUSD(1).mid();
+		SpreadChanged spread = MarketEvents.getSpread(EMarketType.ZAR_BTC);
+		MarketPrice mp = MarketData.INSTANCE.getUSDrBTC(1);
+
+		double rateupper = spread.priceAsk / mp.ask;
+		double diffupper = (rateupper - zarusd) / zarusd * 100;
+
+		AtomicBoolean total = new AtomicBoolean(true);
+		String log = "";
+		if (BasicArbTraderProperties.INSTANCE.useMeanSd) {
+			TradeLimits tradeLimits = getTradeLimits();
+			log = append("MeanSd", log, total, diffupper, tradeLimits.upper);
+		}
+		if (BasicArbTraderProperties.INSTANCE.useDiff) {
+			log = append("Diff", log, total, diffupper, BasicArbTraderProperties.INSTANCE.diff);
+		}
+		if (BasicArbTraderProperties.INSTANCE.useExRate) {
+			log = append("Rate", log, total, rateupper, BasicArbTraderProperties.INSTANCE.exRate);
+		}
+
+		System.out.println(log);
+		return total.get();
+	}
+
+	private String append(String description, String existing, AtomicBoolean total, double actual, double limit) {
+		boolean eval = actual > limit;
+		total.set(total.get() & eval);
+		// logging
+		actual = Math.floor(actual * 10_000) / 10_000;
+		limit = Math.floor(limit * 10_000) / 10_000;
+		String toAppend = description + " " + eval + " " + actual + ">" + limit + "  ";
+
+		return existing + toAppend;
 	}
 
 }

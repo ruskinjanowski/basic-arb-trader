@@ -10,21 +10,42 @@ import arbtrader.credentials.TraderFolders.ProgramName;
 public class BasicArbTraderProperties extends TradeProperties {
 
 	public static final BasicArbTraderProperties INSTANCE = new BasicArbTraderProperties();
-	public final double profit_perc;
-	public final double volume_btc;
+
+	public final boolean useMeanSd;
+	/**
+	 * Standard deviation multiple to trade above.
+	 */
+	public final double sdMultiple;
+
+	public final boolean useDiff;
+	/**
+	 * Difference to trade above.
+	 */
+	public final double diff;
+
+	public final boolean useExRate;
+	/**
+	 * ZAR/USD exchange rate to trade above.
+	 */
+	public final double exRate;
+
+	public final boolean useFixedBTCAmount;
+	/**
+	 * Fixed amount to trade.
+	 */
+	public final double fixedBTCAmount;
 
 	private BasicArbTraderProperties() {
 		super(new File(TraderFolders.getConfig(ProgramName.BasicArbTrader), "BasicArbTrader.properties"));
-		// TODO Auto-generated constructor stub
 
-		profit_perc = getProperty("profit_perc");
-		volume_btc = getProperty("volume_btc");
-
-		System.out.println("-------------Limits---------------");
-		System.out.println("profit_perc: " + profit_perc);
-		System.out.println("volume_btc : " + volume_btc);
-		System.out.println("----------------------------------");
-
+		useMeanSd = getPropertyB("useSdMultiple");
+		sdMultiple = getProperty("sdMultiple");
+		useDiff = getPropertyB("useDifference");
+		diff = getProperty("difference");
+		useExRate = getPropertyB("useExchangeRate");
+		exRate = getProperty("exchangeRate");
+		useFixedBTCAmount = getPropertyB("useFixedBTCAmount");
+		fixedBTCAmount = getProperty("fixedBTCAmount");
 	}
 
 }
