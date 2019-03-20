@@ -1,7 +1,7 @@
 package com.trader.bat;
 
+import com.trader.api.Api;
 import com.trader.client.EventClientEndpoint;
-import com.trader.controller.api.Api;
 import com.trader.definitions.TraderFolders.ProgramName;
 
 public class BasicArbMain {

@@ -20,12 +20,12 @@ import com.trader.luno.AccWallet;
 import com.trader.luno.IOrderFilled;
 import com.trader.luno.LunoBTCManager;
 import com.trader.luno.OrderTracker;
-import com.trader.model.EMarketType;
-import com.trader.model.SpreadChanged;
+import com.trader.model.MarketType;
+import com.trader.model.Spread;
 import com.trader.utility.AccountData;
 import com.trader.utility.MarketData;
-import com.trader.utility.Utility;
 import com.trader.utility.MarketData.MarketPrice;
+import com.trader.utility.Utility;
 
 import arbtrader.stats.TradeLimits;
 import arbtrader.stats.limits.MeanStandardDeviation;
@@ -47,8 +47,8 @@ public class ZAR_USD_Converter implements IOrderFilled, ISpreadListener {
 	// final double toTrade;
 
 	public ZAR_USD_Converter() {
-		EMarketType market = EMarketType.ZAR_BTC;
-		startingUSD = AccountData.getBalance(EMarketType.USD_BTC, Currency.USD, 1);
+		MarketType market = MarketType.ZAR_BTC;
+		startingUSD = AccountData.getBalance(MarketType.USD_BTC, Currency.USD, 1);
 		startingBTCLuno = AccountData.getBalance(market, Currency.BTC, 1);
 		wallet = new AccWallet(market);
 
@@ -75,11 +75,10 @@ public class ZAR_USD_Converter implements IOrderFilled, ISpreadListener {
 				} else {
 					tryy = startingBTCLuno;
 				}
-				// MarketPrice mp = MarketData.INSTANCE.getUSDrBTC(1);
+
 				double canBuyBitstamp = startingUSD / mp.ask;
 				if (canBuyBitstamp > tryy) {
 					if (BasicArbTraderProperties.INSTANCE.useFixedBTCAmount) {
-						// System.out.println("set1");
 						luno.setWantedBTC(startingBTCLuno - BasicArbTraderProperties.INSTANCE.fixedBTCAmount);
 					} else {
 						luno.setWantedBTC(0);
@@ -114,10 +113,6 @@ public class ZAR_USD_Converter implements IOrderFilled, ISpreadListener {
 			LoggingUtil.appendToFile(TRANSACTION_FILE, bitstampT.toString());
 
 			tradedBTC += t.getFill();
-			// double dollarSpent = oBitstamp.getCumulativeAmount().doubleValue()
-			// * oBitstamp.getAveragePrice().doubleValue();
-			//
-			// availableUSD -= dollarSpent;
 			if (Utility.isEqualVolume(wallet.getBtc(), 0)) {
 				System.out.println("volume complete: " + vol);
 				System.exit(0);
@@ -164,7 +159,7 @@ public class ZAR_USD_Converter implements IOrderFilled, ISpreadListener {
 	private boolean isConditionCorrect() {
 
 		double zarusd = MarketData.INSTANCE.getZARrUSD(1).mid();
-		SpreadChanged spread = MarketEvents.getSpread(EMarketType.ZAR_BTC);
+		Spread spread = MarketEvents.getSpread(MarketType.ZAR_BTC);
 		MarketPrice mp = MarketData.INSTANCE.getUSDrBTC(1);
 
 		double rateupper = spread.priceAsk / mp.ask;
